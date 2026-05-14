@@ -6,10 +6,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import Polygon
 
-# ── 配置参数 ──────────────────────────────────────────────────────────────────
-BASE_PATH  = "artifacts/test_custom_seeds/run_seed_29"
-OUTPUT_DIR = "artifacts/test_custom_seeds/PEG_results_seed_29"
-
 # MODELS         = ["lstm", "gru", "tcn", "transformer"]
 # PH_LIST        = [15, 30, 45, 60, 120]
 MODELS         = ["transformer"]
@@ -19,12 +15,7 @@ LIMS           = 550
 
 ZONE_COLORS = {'A':'#c8f0d0','B':'#aed6f1','C':'#fde8a0','D':'#f1a8a5','E':'#d98fcc'}
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 单位还原：数据存储时已按 scale 归一化，需除以 scale 还原为 mg/dL
-# scale 值从每个 results.json 的顶层 'scale' 字段读取
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── Parkes EGA T2D 分类（参考脚本 parkes_type_2 逻辑）────────────────────────
+# ── Parkes EGA T2D
 def _above(x1, y1, x2, y2, act, pred):
     if x1 == x2: return False
     y_line = ((y1 - y2) * act + y2 * x1 - y1 * x2) / (x1 - x2)
@@ -80,7 +71,7 @@ def compute_zone_stats(ref, pred):
             'Zone A+B%': round((a + b) / total * 100, 2)}
 
 
-# ── 区域填色 ──────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
 def draw_peg_zones(ax):
     L = LIMS
     def fill(pts, color, alpha=0.55, zorder=0):
@@ -111,7 +102,7 @@ def draw_peg_zones(ax):
           (440,L),(230,330),(30,50),(0,50)],
          ZONE_COLORS['B'], alpha=0.50, zorder=3)
 
-    # A（最上层）
+    # A
     fill([(0,0),(0,50),(30,50),(230,330),(440,L),(L,L),(L,0)],
          ZONE_COLORS['A'], alpha=0.60, zorder=4)
     fill([(0,0),(50,0),(50,30),(90,80),(330,230),(550,450),(L,L),(0,0)],
@@ -126,26 +117,23 @@ def draw_peg_boundaries(ax):
         pts = np.array(pts)
         ax.plot(pts[:,0], pts[:,1], **kw)
 
-    draw([(0,50), (30,50), (230,330),(440,550)])          # B 上界
-    draw([(0,60), (30,60), (280,550)])                    # C 上界
-    draw([(0,80), (25,80), (35,90),  (125,550)])          # D 上界
-    draw([(0,200),(35,200),(50,550)])                      # E 上界
-    draw([(50,30),(90,80), (330,230),(550,450)])           # B 下界
-    draw([(90,0), (260,130),(550,250)])                    # C 下界
-    draw([(250,40),(410,110),(550,160)])                   # D 下界
+    draw([(0,50), (30,50), (230,330),(440,550)])          # B 
+    draw([(0,60), (30,60), (280,550)])                    # C 
+    draw([(0,80), (25,80), (35,90),  (125,550)])          # D 
+    draw([(0,200),(35,200),(50,550)])                      # E 
+    draw([(50,30),(90,80), (330,230),(550,450)])           # B 
+    draw([(90,0), (260,130),(550,250)])                    # C 
+    draw([(250,40),(410,110),(550,160)])                   # D 
 
-    # 区域字母标注：对照参考图布局
-    # 上方: E D C B A 沿左上→右下斜线
-    # 下方: B C D 关于对角线对称
-    # x 最小值 ≥ 30，避免被 ylabel 裁切
+    
     labels = [
-        # ── 上方（pred > ref 侧），E/D 往内移确保在绘图区内 ──
-        ('E',  30, 480),   # 左上，y 留余量避免顶部裁切
-        ('D',  68, 480),   # E 右侧同高
+        # ── pred > ref ──
+        ('E',  30, 480),   
+        ('D',  68, 480),  
         ('C', 155, 455),
         ('B', 275, 415),
         ('A', 405, 380),
-        # ── 下方（pred < ref 侧），D 往左移避免右边裁切 ──
+        # ── pred < ref  ──
         ('B', 420, 215),
         ('C', 450,  95),
         ('D', 480,  40),
@@ -158,16 +146,13 @@ def draw_peg_boundaries(ax):
                           ec='none', alpha=0.60))
 
 
-# ── 数据读取 ──────────────────────────────────────────────────────────────────
+# ── load data ──────────────────────────────────────────────────────────────────
 def get_subjects(base_path):
     return sorted([d for d in os.listdir(base_path)
                    if os.path.isdir(os.path.join(base_path, d))])
 
 def load_subject(base_path, sub, model, ph):
     """
-    从 predictions 列表读取 y_true / y_pred。
-    单位还原：数据以 scale 归一化存储，还原公式为 value / scale → mg/dL。
-    scale 从 results.json 顶层 'scale' 字段读取，默认 0.01。
     """
     json_path = os.path.join(base_path, sub, model,
                              TARGET_FEATURE, f"PH{ph}", "results.json")
@@ -178,14 +163,13 @@ def load_subject(base_path, sub, model, ph):
         with open(json_path) as f:
             data = json.load(f)
 
-        scale = float(data.get('scale', 0.01))   # 读取 scale，默认 0.01
+        scale = float(data.get('scale', 0.01))  
 
         for entry in data.get('predictions', []):
             yt = entry.get('y_true', [])
             yp = entry.get('y_pred', [])
             if yt and isinstance(yt[0], list): yt = [x[0] for x in yt]
             if yp and isinstance(yp[0], list): yp = [x[0] for x in yp]
-            # 除以 scale 还原为 mg/dL
             y_true.extend([v / scale for v in yt])
             y_pred.extend([v / scale for v in yp])
     except Exception as e:
@@ -207,15 +191,14 @@ def load_all(base_path, model, ph):
     return all_y_true, all_y_pred, count
 
 
-# ── 单图绘制 ──────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 def parkes_error_grid(ref, pred, title, ax, n_subjects=0):
     ref  = np.array(ref,  dtype=float)
     pred = np.array(pred, dtype=float)
 
     draw_peg_zones(ax)
     draw_peg_boundaries(ax)
-
-    # 按 Zone 着色散点（与参考图一致）
+    
     zones  = classify_zones_t2d(ref, pred)
     colors = {'A':'#27ae60','B':'#2980b9','C':'#e67e22','D':'#c0392b','E':'#8e44ad'}
     for zone in 'ABCDE':
@@ -238,25 +221,9 @@ def parkes_error_grid(ref, pred, title, ax, n_subjects=0):
 
     total  = len(zones)
     counts = {z: zones.count(z) for z in 'ABCDE'}
-    # ── 图内统计文字（如需显示请取消注释）──
-    # stats  = "\n".join(f"Zone {z}: {counts[z]/total*100:.1f}%"
-    #                    for z in 'ABCDE' if counts[z] > 0)
-    # ax.text(0.98, 0.02, stats, transform=ax.transAxes, fontsize=7,
-    #         va='bottom', ha='right', zorder=25,
-    #         bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='#cccccc', alpha=0.9))
-    #
-    # rmse = np.sqrt(np.mean((pred - ref)**2))
-    # mard = np.mean(np.abs(pred - ref) / np.clip(ref, 1, None)) * 100
-    # ab   = (counts['A'] + counts['B']) / total * 100
-    # info = (f"n={total:,}  subjects={n_subjects}\n"
-    #         f"RMSE={rmse:.1f} mg/dL  MARD={mard:.1f}%\n"
-    #         f"A+B={ab:.1f}%")
-    # ax.text(0.02, 0.98, info, transform=ax.transAxes, fontsize=7,
-    #         va='top', ha='left', color='#333', zorder=25,
-    #         bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='#cccccc', alpha=0.9))
 
 
-# ── 主流程 ────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────
 def load_and_plot():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     subjects = get_subjects(BASE_PATH)
@@ -302,7 +269,6 @@ def load_and_plot():
     print(f"\nPEG image saved: {img_out}")
     plt.show()
 
-    # 统计表格
     col_tuples = [(model.upper(), f"PH{ph}", metric)
                   for model in MODELS for ph in PH_LIST
                   for metric in ["Zone A%", "Zone A+B%"]]
